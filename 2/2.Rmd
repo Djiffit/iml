@@ -1,0 +1,76 @@
+###Exacice 11111111
+
+
+##a)
+
+```{r}
+  simcount = 200
+  v1 = 2
+  v2 = 3
+  cr12 = -0.75
+  cov12 = sqrt(v1 * v2) * cr12
+  sigma = matrix(c(v1, cov12, cov12, v2), ncol=2); sigma
+```
+```{r}
+  library(MASS)
+  u = c(0, 0)
+  samples = mvrnorm(simcount, u, sigma)
+  print('Covariance')
+  cov(samples)
+  cat('\nCorrelation ', cor(samples)[1,2])
+  ?mvrnorm
+```
+
+##b)
+
+```{r}
+  par(mfrow=c(2,2))
+  denssi = kde2d(samples[,1], samples[,2])
+  plot(samples, pch = 20, col='purple', asp=1)
+  contour(denssi, col='red')
+  image(denssi)
+  persp(denssi, col='salmon')
+```
+
+##c)
+
+```{r}
+  grid = expand.grid(.25*(-20:20),.25*(-20:20))
+  plot(grid, col='blue')
+```
+
+```{r}
+  p = length(u)
+  dvs = matrix(apply(grid, 1, function(row) (1/((2*pi)^(p/2)*sqrt(det(sigma)))*exp(-0.5 * t(row - u) %*% solve(sigma) %*% (row - u)))), nrow=41)
+```
+
+```{r}
+  par(mfrow=c(2,2))
+  contour(dvs, col='red')
+  image(dvs)
+  persp(dvs, col='salmon')
+```
+
+##d)
+
+```{r}
+  u2 = c(2, 1)
+  dvs2 = matrix(apply(grid, 1, function(row) (1/((2*pi)^(p/2)*sqrt(det(sigma)))*exp(-0.5 * (row - u2) %*% solve(sigma) %*% (row - u2)))), nrow=41)
+```
+
+```{r}
+  ratio = dvs / (dvs + dvs2)
+  image(.25*(-20:20), .25*(-20:20), ratio)
+  
+  contour(.25*(-20:20), .25*(-20:20), dvs, add=TRUE, col='blue')
+  contour(.25*(-20:20), .25*(-20:20), dvs2, add=TRUE, col='green')
+  
+```
+
+##3
+
+a) Discriminative have a lower asymptotic error i.e. the error is low when sample size goes to infinity. Generative models have a higher asymptotic error. For lower sample sizes generative models reach this asymptotic bound faster than discriminative models.
+
+b) Generative function tries to maximize p(y, x). Discriminative tries to maximize p(y | x) or the loss. They give at least Naive Bayes and Logistic Regression as a pair.
+
+c) The experiments seem to show what the a) part explains. For small sample sizes generative is better and for larger discriminative gets to catch up and reach a lower error rate.

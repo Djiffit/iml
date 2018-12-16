@@ -1,0 +1,363 @@
+### Start previous week solutions
+
+```{r}
+  generate_data <- function(n_sim) {
+    
+    # generate the class labels
+    Y <- sample(0:2, size = n_sim, replace = TRUE, prob = c(0.4,0.3,0.3))  
+  
+    X_combinations <- as.matrix(expand.grid(0:1,0:2)) # create all the possible combinations of X1 and X2
+    X <- matrix(0, nrow = n_sim, ncol = 2) # initialize a matrix for features values
+  
+    for(i in 1:n_sim) {
+    
+        # select the right class conditional distribution for X1 and X2 based on the sampled class Y[i]  
+        prob <- switch (Y[i]+1,
+                        c(0.2,0.1,0.4,0.2,0.0,0.1),
+                        c(0.6,0.1,0.1,0.1,0.1,0.0),
+                        c(0.1,0.4,0.3,0.0,0.2,0.0))
+        
+        # use this distribution to sample values for X1 and X2
+        X[i, ] <- X_combinations[sample(1:6, size = 1, replace = TRUE, prob = prob),]
+      }
+        
+      return(list(X = X, Y = Y))
+}
+```
+
+```{r}
+set.seed(12345)
+n <- 100
+data <- generate_data(n)
+
+X <- data$X
+Y <- data$Y
+```
+
+```{r}
+nb <- function(Y, X, n_class = 3, n_class_x = c(2,3), a = 1) {
+    n <- length(Y) # number of samples in the training data
+    
+    # initialize a list to store the estimated class conditional probabilities
+    likelihood <- vector('list', length = n_class)
+  
+    # the same for the class probabilities  
+    prior <- numeric(n_class)
+    
+
+    for(c in 0:(n_class-1)) {
+    
+        n_c <- sum(Y == c) # the number of observations with Y = c 
+        prior[c+1] <- (n_c + a) / (n + n_class * a) # the formula in the exercise sheet
+        
+        # consider each feature separately
+        for(i in seq_along(n_class_x)) {
+            
+            likelihood[[c+1]][[i]] <- numeric(n_class_x[i]) # vector whose length is the cardinality of X_i            
+            
+            # loop over possible values of X_i
+            for(j in 0:(n_class_x[i]-1)) {
+                
+                n_cj <- sum(Y == c & X[ ,i] == j) # count how many times we observe X_i = j when Y = c
+                likelihood[[c+1]][[i]][j+1] <- (n_cj + a) / (n_c + n_class_x[i] * a) # estimated probability    
+            }
+        }
+    }
+    
+    ret <- list(prior = prior, likelihood = likelihood, n_class = n_class, n_class_x = n_class_x)
+    class(ret) <- 'nb' # define that the list 'ret' belongs to class 'nb' 
+    
+    return(ret)
+}
+```
+
+```{r}
+
+predict.nb <- function(nbfit, X, probabilities = FALSE) {
+  n <- nrow(X)
+  prob <- matrix(0, nrow = n, ncol = nbfit$n_class) 
+    
+  for(i in 1:n) # compute joint probabilities p(x,y) = p(x|y)p(y)
+    for(c in 1:nbfit$n_class) {
+      prob[i,c] <- nbfit$prior[c] # prior p(y)      
+      for(j in seq_along(nbfit$n_class_x))
+        prob[i,c] <- prob[i,c] * nbfit$likelihood[[c]][[j]][X[i,j] + 1] #likelihood p(x_1| y)p(x_2|y) = p(x|y)
+    }
+  prob <- prob / rowSums(prob)      # normalize into conditional probabilities p(y|x)             
+}
+```
+
+#2
+
+```{r}
+logLoss = function(predictions, answers) {
+  sum((sapply((1:nrow(predictions)), function(i) (-log(predictions[i, (answers[i] + 1)], base = 2)))))
+}
+```
+
+```{r}
+n_trains = c(16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192)
+test <- generate_data(1e4)
+test_df = data.frame(Y=test$Y, X1=factor(test$X[,1]), X2=factor(test$X[,2]))
+
+for (n in n_trains) {
+  train <- generate_data(n)
+  
+  train_df = data.frame(Y=train$Y, X1=factor(train$X[,1]), X2=factor(train$X[,2]))
+  
+  reg <- multinom(Y ~ X1 + X2, data=train_df)
+  y_hats <- predict(reg, test_df, type='probs')
+  
+  print(paste('####### Number of training examples is ', n))
+  for (i in c(0, 0.5, 1)) {
+    nbc <- nb(train$Y, train$X, a=i)
+    y_hat <- predict(nbc, test$X)
+    
+    loss <- logLoss(y_hat, test$Y)
+    print(paste('a = ', i, ' loss = ', (loss)))
+  }
+  
+  print(paste('Logistic regresion ', ' loss = ', (logLoss(y_hats, test$Y))))
+}
+```
+
+The loss seems to work as the paper said in that for low sample size the naive bayes has lower error rate, but the logistic regression does not seem to get the lower results that it theoretically could but rather the error rate is equal to that of naive bayes.
+
+```{r}
+bayes <- function() {
+  zero = c(0.2,0.1,0.4,0.2,0.0,0.1) * .4
+  one = c(0.6,0.1,0.1,0.1,0.1,0.0) * .3
+  two = c(0.1,0.4,0.3,0.0,0.2,0.0) * .3
+  matrix = matrix(c(zero, one, two), nrow=6) 
+  normalized = matrix / rowSums(matrix)
+  
+  class(normalized) <- 'bayes'
+  normalized
+}
+
+```
+
+```{r}
+
+predict.bayes <- function(model, X, probs=FALSE) {
+  
+  pmat = matrix(nrow=nrow(X), ncol=3)
+  
+  for (i in 1:nrow(X)) {
+    x1 = X[i, 1]
+    x2 = X[i, 2]
+    for (y in 1:3) {
+      mat = matrix(c(model[1, y], model[3,y], model[5,y], model[2,y], model[4,y], model[6,y]), nrow=3)
+      pmat[i, y] = mat[x2 + 1, x1 + 1]
+    }
+  }
+
+  if (probs) {
+    return (pmat)
+  }
+  
+  predClass = max.col(pmat) - 1
+  predClass
+}
+train <- generate_data(n)
+predict(bayes(), train$X)
+```
+
+```{r}
+
+bayes_classifier <- bayes()
+dat <- matrix(c(test_df[,2], test_df[,3]), ncol=2) - 1
+pred <- predict(bayes_classifier, dat)
+error <- sum(pred != test$Y) / length(test$Y)
+logLoss(predict(bayes_classifier, dat, probs=TRUE), test$Y)
+
+print(paste('Misclassified ', error, ' percent'))
+```
+
+```{r}
+n_trains = c(16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192)
+test <- generate_data(1e4)
+test_df = data.frame(Y=test$Y, X1=factor(test$X[,1]), X2=factor(test$X[,2]))
+
+nbs = c()
+
+for (n in n_trains) {
+  train <- generate_data(n)
+  
+  train_df = data.frame(Y=train$Y, X1=factor(train$X[,1]), X2=factor(train$X[,2]))
+  
+  reg <- multinom(Y ~ X1 + X2, data=train_df)
+  y_hats <- predict(reg, test_df, type='probs')
+  
+  nbc <- nb(train$Y, train$X, a=i)
+  y_hat <- predict(nbc, test$X)
+  
+  pred = max.col(y_hat) - 1
+  nbs <- c(nbs, sum(pred != test_data$Y) / length(test_data$Y))
+  
+  log = c(log, (logLoss(y_hats, test_data$Y)))
+  
+  bayes_classifier <- bayes()
+  
+  bayes_loss <- (sum((predict(bayes_classifier, test_data$X) != test_data$Y))) / length(test_data$Y)
+}
+
+plot(x = log(n_trains, base = 2), ylim=c(0, 1), nbs, type = 'b', col = 'black')
+abline(h = bayes_loss, lty = 2, col='salmon')
+
+```
+
+```{r}
+nbe = c()
+lfite = c()
+lfitexe = c()
+
+for(i in n_trains) {
+  train_data <- generate_data(i)
+  train_df <- data.frame(Y = train_data$Y, X1 = factor(train_data$X[ ,1]), X2 = factor(train_data$X[ ,2]))
+  
+  lfit_extra <- multinom(Y ~ X1 * X2, data = train_df) 
+  
+  n_b <- nb(train_data$Y, train_data$X, a = 0)
+  pred <- max.col(predict(n_b, test_data$X)) - 1
+  
+  lfit <- multinom(Y ~ X1 + X2, data = train_df)
+  
+  nbe = c(nbe, mean(pred != test_data$Y))
+  lfite = c(lfite, mean(predict(lfit, test_df) != test$Y))
+  lfitexe = c(lfitexe, mean(predict(lfit_extra, test_df) != test$Y))
+  
+}
+
+plot(x = log(n_trains, base = 2), ylim=c(0,1), col='green', nbe, type='b')
+lines(x = log(n_trains, base = 2), lfite, type = 'b', col = 'red', lwd = 2, pch = 20)
+lines(x = log(n_trains, base = 2), lfitexe, type = 'b', col = 'blue', lwd = 2, pch = 20)
+abline(h = bayes_loss, lty = 2)
+legend("topright", legend = c('Naive Bayes', 'Logistic', 'Logistic with ia', 'Bayes error'), col = c('green', 'red', 'blue', 'black'), lwd = c(3,3,3,2))
+
+
+```
+
+#3
+
+```{r}
+simcount <- 200
+a <- 2
+Y <- rbinom(simcount, 1, 0.5)
+Y[Y == 0] <- rep(-1, sum(Y == 0))
+mu_p <- mu_m <- 0
+sd_p <- sqrt(16)
+sd_m <- sqrt(1)
+X <- matrix(numeric(simcount * a), nrow = simcount)
+X[Y == -1, ] <- rnorm(a * sum(Y == -1), mu_m, sd_m)
+X[Y == 1, ] <- rnorm(a * sum(Y == 1), mu_p, sd_p)
+
+train_data <- data.frame(Y = factor(Y), X1 = X[ ,1], X2 = X[ ,2])
+
+```
+
+```{r}
+library(e1071)
+cost <- c(.01, 1, 10, 100)
+for(c in cost) {
+  svm <- svm(Y ~ ., data=train_data, kernel='linear', cost=c)
+  plot(svm, train_data)
+  print(paste('cost: ', cost,  ', error: ', mean(predict(svm) != train$Y)))
+}
+```
+
+```{r}
+deg = 2:4
+
+for (d in deg) {
+  for (c in cost) {
+    svm_poly <- svm(Y ~ ., data=train_data, kernel = 'polynomial', degree = d, cost =c)
+    plot(svm_poly, train_data)
+    print(paste('degree:', d, 'cost: ', cost,  ', error: ', mean(predict(svm_poly) != train$Y)))
+  }
+}
+```
+
+```{r}
+train_data$X3 <- train_data$X1^2
+train_data$X4 <- train_data$X2^2
+
+
+library(e1071)
+cost <- c(.01, 1, 10, 100)
+for(c in cost) {
+  svmf <- svm(Y ~ X3 + X4, data=train_data, kernel='linear', cost=c)
+  print(paste('cost: ', c,  ', error: ', mean(predict(svmf) != train$Y)))
+}
+```
+
+```{r}
+library(ISLR)
+n <- nrow(OJ)
+train_count <- 800
+train_data <- OJ[sample(1:n, train_count), ]
+test_data <- OJ[-sample(1:n, train_count), ]
+```
+
+```{r}
+  svmf <- svm(Purchase ~., data = train_data, cost = .01, kernel = 'linear')
+  summary(svmf)
+```
+
+```{r}
+ print(paste('training error: ', mean(predict(svmf) != train_data$Purchase)))
+ print(paste('test error: ', mean(predict(svmf, test_data) != test_data$Purchase)))
+```
+
+```{r}
+ranges <- list(cost = c(.01, .1, 1, 5, 10)) 
+cv <- tune('svm', Purchase ~ ., data = train_data, kernel = 'linear', ranges = ranges)
+summary(cv)
+```
+```{r}
+svmfit <- svm(Purchase ~., data = train_data, cost = 10, kernel = 'linear')
+print(paste('training error: ', mean(predict(svm) != train_data$Purchase)))
+print(paste('test error: ', mean(predict(svmfit, test_data) != test_data$Purchase)  ))
+```
+
+```{r}
+svmfit <- svm(Purchase ~., data = train_data, cost = 0.01, kernel = 'radial')
+
+print(paste('training error: ', mean(predict(svmfit) != train_data$Purchase)))
+print(paste('test error: ', mean(predict(svmfit, test_data) != test_data$Purchase)))
+```
+
+```{r}
+ranges <- list(cost = c(.01, .1, 1, 5, 10)) 
+cv_r <- tune('svm', Purchase ~ ., data = train_data, kernel = 'radial', ranges = ranges)
+summary(cv_r)
+```
+
+```{r}
+
+svmfit <- svm(Purchase ~., data = train_data, cost = 1, kernel = 'radial')
+
+print(paste('training error: ', mean(predict(svmfit) != train_data$Purchase)))
+print(paste('test error: ', mean(predict(svmfit, test_data) != test_data$Purchase)))
+```
+
+```{r}
+svmfit <- svm(Purchase ~., data = train_data, cost = .01, kernel = 'polynomial', degree = 2)
+print(paste('training error: ', mean(predict(svmfit) != train_data$Purchase)))
+print(paste('test error: ', mean(predict(svmfit, test_data) != test_data$Purchase)))
+```
+
+```{r}
+ranges <- list(cost = c(.01, .1, 1, 5, 10)) 
+cv_p <- tune('svm', Purchase ~ ., data = train_data, kernel = 'polynomial', degree = 2, ranges = ranges)
+summary(cv_p) 
+```
+
+```{r}
+svmfit <- svm(Purchase ~., data = train_data, cost = 10, kernel = 'polynomial', degree = 2)
+print(paste('training error: ', mean(predict(svmfit) != train_data$Purchase)))
+print(paste('test error: ', mean(predict(svmfit, test_data) != test_data$Purchase)))
+
+```
+
+

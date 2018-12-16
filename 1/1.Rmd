@@ -1,0 +1,213 @@
+---
+title: "One things"
+output: html_notebook
+---
+
+---
+
+
+### 1 b)
+
+```{r}
+simulator_extraordinaire = function(args) {
+  n = args[2]
+  p = args[1]
+  a = 0.05
+  simcount = 10000
+  
+  if (length(args) == 3) {
+    epsilon = sqrt(log((2 * args[3])/a)/(2 * n))
+  } else {
+    epsilon = sqrt(log(2/a)/(2 * n))
+  }
+  
+  lowb = n * (p - epsilon)
+  upb = n * (p + epsilon)
+  
+  
+  if (length(args) == 3) {
+    insiders = simcount
+    for (i in 1:simcount) {
+      sim = rbinom(args[3], n, p)
+      cnt = 1
+      while (cnt <= length(sim)) {
+        if (sim[cnt] > upb || sim[cnt] < lowb) {
+          insiders = insiders - 1
+          break
+        }
+        cnt = cnt + 1
+      }
+    }
+    return (insiders / simcount)
+  }
+  
+  sim = rbinom(simcount, n, p)
+  insiders = 0
+  
+  for (num in sim) {
+    if (num >= lowb && num <= upb) {
+      insiders = insiders + 1
+    }
+  }
+  return (insiders / simcount)
+}
+```
+
+```{r}
+do_simulate = function(p, n) {
+  inputs = expand.grid(p = p, n = n)
+  res = apply(inputs, 1, FUN = simulator_extraordinaire)
+  combined = cbind(inputs, res)
+  combined[order(combined$res),]
+}
+```
+
+```{r}
+  do_simulate(c(0.5, 0.9, 0.99), c(10, 100, 1000))
+```
+
+---
+###1 d)
+
+```{r}
+
+do_simulate_again = function(p, n, k) {
+  inputs = expand.grid(p = p, n = n, k = k)
+  res = apply(inputs, 1, FUN = simulator_extraordinaire)
+  combined = cbind(inputs, res)
+  combined[order(combined$res),]
+}
+```
+
+```{r}
+do_simulate_again(c(0.5, 0.9, 0.99), c(10, 100, 1000), c(10, 100))
+```
+
+---
+
+###2
+
+
+```{r}
+college = read.csv("./College.csv")
+college
+```
+
+```{r}
+rownames(college)=college[,1]
+fix(college)
+college = college[, -1]
+fix(college)
+```
+
+```{r}
+college
+```
+
+```{r}
+summary(college)
+pairs(college[,1:10])
+boxplot(college[, 9] ~ college[, 1], main="Outstate vs Private", col="lightblue", ylab="Outstate", xlab="Private")
+```
+
+```{r}
+Elites = rep("No", nrow(college))
+Elites[college$Top10perc >50]="Yes"
+Elites = as.factor(Elites)
+college = data.frame(college, Elites)
+```
+
+```{r}
+boxplot(college[, 9] ~ college[, length(college)], main="Outstate vs Elite", col="orange", ylab="Outstate", xlab="Elite")
+par(mfrow=c(3,3))
+hist(college[, 2], breaks=20, main="Apps")
+hist(college[, 3], breaks=20, main="Accept")
+hist(college[, 4], breaks=20, main="Enroll")
+hist(college[, 7], breaks=20, main="F.Undergrad")
+hist(college[, 8], breaks=20, main="P.Undergrad")
+hist(college[, 9], breaks=10, main="Outstate")
+hist(college[, 15], breaks=8, main="Student / Faculty")
+hist(college[, 17], breaks=15, main="Expend")
+hist(college[, 18], breaks=10, main="Graduation Rate")
+```
+
+---
+###3 a)
+```{r}
+ #set.seed(666)
+X = c(runif(30, -3, 3))
+Y = sapply(X, function(x) 2 + x - (0.5 * x * x)) + rnorm(length(X), 0, 0.4)
+plot(X, Y, col="red")
+df = data.frame(X, Y)
+```
+
+```{r}
+fitter_of_polynomial = function(data, pow) {
+  if (pow == 0) {
+    return (lm(Y ~ 1, data = data))
+  }
+  return (lm(Y ~ poly(X, pow), data = data))
+}
+```
+
+```{r}
+par(mfrow = c(3,4))
+mse = c()
+model = c()
+for (i in 0:10) {
+  model[[i + 1]] = fitter_of_polynomial(df, i)
+  plot(df$X, df$Y, col="purple", main = paste("K = ", i))
+  test = data.frame(X = seq(-3, 3, by=0.001))
+  lines(test$X, predict(model[[i + 1]], test), col="salmon")
+  mse[i + 1] = mean(model[[i + 1]]$residuals^2)
+}
+```
+
+```{r}
+plot(0:10, mse, type = 'l', main='MSE')
+```
+
+### 3b)
+
+```{r}
+X = c(runif(1000, -3, 3))
+Y = sapply(X, function(x) 2 + x - (0.5 * x * x)) + rnorm(length(X), 0, 0.4)
+plot(X, Y, col="red")
+test = data.frame(X, Y)
+```
+
+```{r}
+test_mse = c()
+for (i in 0:10) {
+  mdl = model[[i + 1]]
+  test_y = predict(mdl, test)
+  test_mse[i + 1] = mean((Y - test_y)^2)
+}
+```
+
+```{r}
+plot(0:10,test_mse, type='b', col="purple")
+lines(0:10, mse, type='b', col='red')
+```
+###3 c)
+```{r}
+k = 10
+error = c(0,0,0,0,0,0,0,0,0,0,0)
+sample = sample(1:30)
+
+for (i in 1:10) {
+  data = sample[((i - 1) * 3 + 1): (i*3)]
+  testdata = df[data, ]
+  traindata = df[-data, ]
+  
+  thing = data.frame(traindata, testdata)
+  
+  for (k in 0:10) {
+    m = fitter_of_polynomial(traindata, k)
+    predictions = predict(m, newdata = testdata)
+    error[k+1] = error[k + 1]+ (sum((predictions - c(df$Y[data]))**2))
+  }
+}
+plot(0:10, error, type = 'b',col = 'red')
+```
+

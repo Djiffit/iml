@@ -1,0 +1,185 @@
+
+
+```{r}
+load_mnist <- function() {
+  load_image_file <- function(filename) {
+    ret = list()
+    f = file(filename,'rb')
+    readBin(f,'integer',n=1,size=4,endian='big')
+    ret$n = readBin(f,'integer',n=1,size=4,endian='big')
+    nrow = readBin(f,'integer',n=1,size=4,endian='big')
+    ncol = readBin(f,'integer',n=1,size=4,endian='big')
+    x = readBin(f,'integer',n=ret$n*nrow*ncol,size=1,signed=F)
+    ret$x = matrix(x, ncol=nrow*ncol, byrow=T)
+    close(f)
+    ret
+  }
+  load_label_file <- function(filename) {
+    f = file(filename,'rb')
+    readBin(f,'integer',n=1,size=4,endian='big')
+    n = readBin(f,'integer',n=1,size=4,endian='big')
+    y = readBin(f,'integer',n=n,size=1,signed=F)
+    close(f)
+    y
+  }
+  train <<- load_image_file('mnist/train-images-idx3-ubyte')
+  test <<- load_image_file('mnist/t10k-images-idx3-ubyte')
+  
+  train$y <<- load_label_file('mnist/train-labels-idx1-ubyte')
+  test$y <<- load_label_file('mnist/t10k-labels-idx1-ubyte')  
+}
+
+
+show_digit <- function(arr784, col=gray(12:1/12), ...) {
+  image(matrix(arr784, nrow=28)[,28:1], col=col, ...)
+}
+
+load_mnist()
+```
+
+```{r}
+distances <- function(A, B) { 
+    an = apply(A, 1, function(rvec) crossprod(rvec,rvec))
+    bn = apply(B, 1, function(rvec) crossprod(rvec,rvec))
+ 
+    m = nrow(A)
+    n = nrow(B)
+ 
+    tmp = matrix(rep(an, n), nrow=m) 
+    tmp = tmp +  matrix(rep(bn, m), nrow=m, byrow=TRUE)
+    sqrt( tmp - 2 * tcrossprod(A,B) )
+}
+```
+
+```{r}
+train_x <- train$x[1:5000,]
+train_y <- train$y[1:5000]
+
+test_x <- test$x[1:1000,]
+test_y <- test$y[1:1000]
+
+ddata <- distances(train_x,test_x)
+ddata[1,1]
+```
+
+```{r}
+knn_classifier <- function(DM, y, k = 1) {
+    return (apply(DM, 2, function(col) (names(sort(table(mapply(order(col)[1:k], FUN=function(x) y[x])), decreasing=TRUE))[1])))
+}
+```
+
+```{r}
+maxk <- 50
+res <- numeric(maxk)
+
+for(k in 1:maxk) {
+    y_hat <- knn_classifier(ddata, train_y, k)
+    
+    res[k] <- sum(y_hat == test_y) / length(test_y) 
+}
+
+plot(1:k, res, type = 'l', xlab = 'k')
+```
+```{r}
+n = 60000
+
+X = train$x[1:n,]
+Y = train$y[1:n]
+
+means <- colMeans(X)
+
+center <- t(apply(X, 1, FUN=function(x) x - t(means)))
+
+xsd <- sqrt(colMeans(center**2))
+xsd[xsd == 0] = 1
+
+XM <- t(apply(center, 1, FUN=function(x) x / xsd))
+
+XtX <- t(XM) %*% XM / n
+diag(XtX)
+```
+
+```{r}
+e = eigen(XtX)
+evalues = e$values
+evectors = e$vectors
+par(mfrow = c(5,5), mar = c(0,0,0,0))
+
+for (i in 1:25) {
+  show_digit(evectors[,i], axes=FALSE)
+}
+```
+
+```{r}
+# par(pty='s')
+ev1 = evectors[, 1]
+ev2 = evectors[, 2]
+
+pc1 = XM %*% ev1
+pc2 = XM %*% ev2
+
+plot(pc1, pc2, col=Y+1, pch=4, cex=0.5)
+legend('topright', legend=0:9, col=1:10, pch=4)
+```
+
+```{r}
+nt = 1000
+testX = test$x[1:nt,]
+testY = test$y[1:nt]
+
+testcenter <- t(apply(testX, 1, FUN=function(x) x - t(means)))
+
+tXM <- t(apply(testcenter, 1, FUN=function(x) x / xsd))
+
+k = 5
+qs = c(5, 10,20,40,100)
+
+for (q in qs) {
+  Xq = XM %*% evectors[,1:q]
+  Xqtest = tXM %*% evectors[,1:q]
+  
+  ds = distances(Xq, Xqtest)
+  yh = knn_classifier(ds, y=Y[1:n], k)
+  
+  print(paste('q =',q, '  k =', k, '  correct = ', sum(testY == yh)/nt))
+}
+```
+```{r}
+n = 100
+mu = 0
+sigma = sqrt(100)
+m = 1000
+interval = 1.96*(sigma/sqrt(n)) 
+X = matrix(rnorm(n*m, mean=mu, sd=sigma), nrow = m)
+print(paste('Proportion inside interval ', sum(mapply(rowMeans(X), FUN=function(x) x - interval < mu && mu < x + interval)) / m))
+```
+
+```{r}
+bmean <- function(X, K = 1000, N = 100) {
+        means = numeric(K) 
+    
+        for(i in 1:K) {
+            ds = sample(X,size = N,replace = TRUE)
+            means[i] = mean(ds)
+        }
+    
+        return(as.numeric(quantile(means,c(.025,0.975)) ))
+}
+```
+
+```{r}
+bmean(X[1,], K = 1000, N = n)
+```
+```{r}
+inside = 0
+
+for (i in 1:m) {
+  ival = bmean(X[i,])
+  if (ival[1] < mu && ival[2] > mu) {
+    inside = inside + 1
+  }
+}
+
+print(paste('Proportion inside interval ', inside / m))
+```
+
